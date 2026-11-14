@@ -9,6 +9,8 @@ NovaSTB uses ADB only after the STB has already enabled the service and authoriz
 - The remote file browser is restricted to shared storage rooted at /sdcard.
 - Remote paths are normalized and traversal outside /sdcard is rejected.
 - The app does not expose an arbitrary shell/terminal screen.
+- Uploads use a random temporary name before a final rename; downloads are staged in the app cache until the remote read succeeds.
+- Transfer cancellation attempts best-effort cleanup of temporary remote uploads.
 - Uninstall is limited to packages returned by Package Manager's third-party app list and requires an in-app confirmation.
 - Plain TCP ADB has a separate acknowledgement warning.
 - No network port is opened by NovaSTB; the app connects outbound to the address and port entered by the user.

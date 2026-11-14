@@ -6,12 +6,14 @@ import android.provider.OpenableColumns
 import io.github.rhythmcache.adb.AdbClient
 import io.github.rhythmcache.adb.FileKeyProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.util.UUID
 
 data class DeviceInfo(
     val manufacturer: String,
@@ -124,19 +126,94 @@ class StbRepository(context: Context) {
             .toList()
     }
 
-    suspend fun upload(uri: Uri, remoteDirectory: String): String = withContext(Dispatchers.IO) {
-        val destination = RemotePath.child(remoteDirectory, displayName(uri))
+    suspend fun upload(
+        uri: Uri,
+        remoteDirectory: String,
+        onProgress: (bytesDone: Long, totalBytes: Long?) -> Unit
+    ): String = withContext(Dispatchers.IO) {
+        val name = displayName(uri)
+        val destination = RemotePath.child(remoteDirectory, name)
+        val temporaryPath = RemotePath.child(
+            remoteDirectory,
+            ".novastb-upload-${UUID.randomUUID()}.part"
+        )
+        val totalBytes = contentSize(uri)
         val input = appContext.contentResolver.openInputStream(uri)
             ?: throw IOException("Android could not open the selected file.")
-        input.use { requireClient().sync.push(it, destination) }
-        destination
+
+        onProgress(0L, totalBytes)
+        try {
+            input.use {
+                requireClient().sync.push(it, temporaryPath) { bytesDone ->
+                    onProgress(bytesDone, totalBytes)
+                }
+            }
+            val moveResult = requireClient().shell(
+                "mv -f ${shellQuote(temporaryPath)} ${shellQuote(destination)}"
+            )
+            if (!moveResult.isSuccess) {
+                throw IOException(
+                    moveResult.stderrText.ifBlank {
+                        moveResult.stdoutText.ifBlank { "The upload completed but could not be moved into place." }
+                    }
+                )
+            }
+            destination
+        } catch (error: Throwable) {
+            withContext(NonCancellable) {
+                runCatching {
+                    requireClient().shell("rm -f ${shellQuote(temporaryPath)}")
+                }
+            }
+            throw error
+        }
     }
 
-    suspend fun download(remotePath: String, destination: Uri) = withContext(Dispatchers.IO) {
+    suspend fun download(
+        remotePath: String,
+        destination: Uri,
+        onProgress: (bytesDone: Long, totalBytes: Long?) -> Unit
+    ) = withContext(Dispatchers.IO) {
         val safePath = RemotePath.normalize(remotePath)
-        val output = appContext.contentResolver.openOutputStream(destination, "w")
-            ?: throw IOException("Android could not create the destination file.")
-        output.use { requireClient().sync.pull(safePath, it) }
+        val stat = requireClient().sync.stat(safePath)
+        require(stat.isFile) { "Choose a file, not a folder, to download." }
+        val totalBytes = stat.size.takeIf { it >= 0L }
+        val temporaryFile = File.createTempFile("novastb-download-", ".part", appContext.cacheDir)
+
+        onProgress(0L, totalBytes)
+        try {
+            temporaryFile.outputStream().use { output ->
+                requireClient().sync.pull(safePath, output) { bytesDone ->
+                    onProgress(bytesDone, totalBytes)
+                }
+            }
+
+            // Only create/write the user-selected destination after the remote read completed.
+            withContext(NonCancellable) {
+                val output = appContext.contentResolver.openOutputStream(destination, "w")
+                    ?: throw IOException("Android could not create the destination file.")
+                output.use { target ->
+                    temporaryFile.inputStream().use { source -> source.copyTo(target) }
+                }
+            }
+        } finally {
+            temporaryFile.delete()
+        }
+    }
+
+    private fun contentSize(uri: Uri): Long? {
+        return appContext.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.SIZE),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (index < 0 || cursor.isNull(index)) null
+            else cursor.getLong(index).takeIf { it >= 0L }
+        }
     }
 
     suspend fun installApk(uri: Uri, onProgress: (Float, String) -> Unit) =

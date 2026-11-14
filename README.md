@@ -12,9 +12,12 @@ NovaSTB is being built for a Motorola G35 5G phone and the Jio JMSB200A set-top 
 - Browse shared storage under /sdcard.
 - Upload a phone file to the current STB folder.
 - Download an STB file to a phone-selected location.
+- Show live byte progress for file transfers and allow the current operation to be cancelled.
 - List third-party packages, launch an app, and uninstall a listed user app.
 - Read basic manufacturer, model, Android release and SDK properties.
 - Build and run path-safety unit tests in GitHub Actions.
+
+Uploads use a temporary remote name and are renamed into place only after the transfer completes. Downloads are first staged in the app cache and copied to the selected destination only after the STB read completes. A cancelled or failed transfer therefore avoids presenting an incomplete final file, though a temporary remote upload can remain if the connection drops before cleanup.
 
 ## What NovaSTB does not do
 

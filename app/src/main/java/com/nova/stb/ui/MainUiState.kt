@@ -11,6 +11,17 @@ enum class AppTab(val label: String, val marker: String) {
     DEVICE("Device", "05")
 }
 
+data class TransferProgressState(
+    val label: String,
+    val bytesTransferred: Long,
+    val totalBytes: Long?
+) {
+    val fraction: Float?
+        get() = totalBytes
+            ?.takeIf { it > 0L }
+            ?.let { (bytesTransferred.toDouble() / it.toDouble()).coerceIn(0.0, 1.0).toFloat() }
+}
+
 data class MainUiState(
     val host: String = "",
     val port: String = "5555",
@@ -19,6 +30,7 @@ data class MainUiState(
     val allowPlainTcp: Boolean = false,
     val connected: Boolean = false,
     val busy: Boolean = false,
+    val transferProgress: TransferProgressState? = null,
     val statusMessage: String = "Connect your Jio STB on the same trusted Wi-Fi network.",
     val deviceInfo: DeviceInfo? = null,
     val tab: AppTab = AppTab.CONNECT,

@@ -145,7 +145,7 @@ private fun NovaStbScreen(viewModel: MainViewModel) {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Header(state.connected)
-            StatusPanel(state)
+            StatusPanel(state, viewModel::cancelCurrentTask)
             when (state.tab) {
                 AppTab.CONNECT -> ConnectScreen(viewModel, state)
                 AppTab.INSTALL -> InstallScreen(state) { apkPicker.launch(arrayOf("*/*")) }
@@ -221,37 +221,84 @@ private fun Header(connected: Boolean) {
 }
 
 @Composable
-private fun StatusPanel(state: MainUiState) {
+private fun StatusPanel(state: MainUiState, onCancel: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = NovaSurface),
         shape = RoundedCornerShape(18.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(9.dp)
         ) {
-            if (state.busy) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = NovaMint
-                )
-                Spacer(Modifier.size(12.dp))
-            } else {
-                Surface(
-                    color = NovaMint.copy(alpha = 0.16f),
-                    shape = CircleShape,
-                    modifier = Modifier.size(20.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("•", color = NovaMint, fontSize = 18.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (state.busy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = NovaMint
+                    )
+                } else {
+                    Surface(
+                        color = NovaMint.copy(alpha = 0.16f),
+                        shape = CircleShape,
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("•", color = NovaMint, fontSize = 18.sp)
+                        }
                     }
                 }
                 Spacer(Modifier.size(12.dp))
+                Text(state.statusMessage, color = NovaText, fontSize = 12.sp, modifier = Modifier.weight(1f))
             }
-            Text(state.statusMessage, color = NovaText, fontSize = 12.sp)
+            state.transferProgress?.let { transfer ->
+                val fraction = transfer.fraction
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(transfer.label, color = NovaMint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (fraction != null) "${(fraction * 100).toInt()}%"
+                        else formatBytes(transfer.bytesTransferred),
+                        color = NovaMuted,
+                        fontSize = 10.sp
+                    )
+                }
+                if (fraction != null) {
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = NovaMint
+                    )
+                    Text(
+                        "${formatBytes(transfer.bytesTransferred)} of ${formatBytes(transfer.totalBytes ?: 0L)}",
+                        color = NovaMuted,
+                        fontSize = 10.sp
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = NovaMint)
+                }
+            }
+            if (state.busy) {
+                OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+                    Text("Cancel operation")
+                }
+            }
         }
     }
+}
+
+private fun formatBytes(value: Long): String {
+    if (value < 1024L) return "$value B"
+    val units = arrayOf("KB", "MB", "GB", "TB")
+    var amount = value.toDouble()
+    var unit = -1
+    do {
+        amount /= 1024.0
+        unit++
+    } while (amount >= 1024.0 && unit < units.lastIndex)
+    return String.format(java.util.Locale.US, "%.1f %s", amount, units[unit])
 }
 
 @Composable

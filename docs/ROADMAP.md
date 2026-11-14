@@ -14,7 +14,7 @@
 - [ ] Successful end-to-end APK install and file round-trip.
 
 ## Phase 2 — transfer and installer quality
-- [ ] Streaming transfer progress and cancellation.
+- [x] Streaming single-file transfer progress and cancellation.
 - [ ] Folder upload/download with a bounded queue.
 - [ ] Resume/retry for interrupted transfers.
 - [ ] Split APK (.apks) installer with bundle validation.

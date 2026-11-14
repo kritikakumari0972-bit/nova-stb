@@ -2,6 +2,7 @@ package com.nova.stb.ui
 
 import android.app.Application
 import android.net.Uri
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -9,6 +10,8 @@ import androidx.lifecycle.viewModelScope
 import com.nova.stb.data.RemotePath
 import com.nova.stb.data.StbRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -18,6 +21,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = StbRepository(application)
     private val mutableState = MutableStateFlow(MainUiState())
     val state = mutableState.asStateFlow()
+    private var activeTask: Job? = null
 
     fun updateHost(value: String) = mutableState.update { it.copy(host = value) }
     fun updatePort(value: String) = mutableState.update { it.copy(port = value.filter(Char::isDigit).take(5)) }
@@ -135,9 +139,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun uploadFile(uri: Uri) {
         val directory = mutableState.value.currentPath
-        runTask("Uploading file to STB…") {
-            val destination = repository.upload(uri, directory)
-            mutableState.update { it.copy(statusMessage = "Uploaded to $destination.") }
+        val fileName = repository.displayName(uri)
+        runTask("Uploading $fileName…") {
+            mutableState.update {
+                it.copy(transferProgress = TransferProgressState("Uploading $fileName", 0L, null))
+            }
+            var lastUpdate = 0L
+            val destination = repository.upload(uri, directory) { done, total ->
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastUpdate >= 100L || (total != null && done >= total)) {
+                    lastUpdate = now
+                    mutableState.update {
+                        it.copy(transferProgress = TransferProgressState("Uploading $fileName", done, total))
+                    }
+                }
+            }
+            mutableState.update {
+                it.copy(transferProgress = null, statusMessage = "Uploaded to $destination.")
+            }
             val refreshed = repository.listFiles(directory)
             mutableState.update { it.copy(remoteFiles = refreshed) }
         }
@@ -157,12 +176,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun downloadPendingTo(uri: Uri) {
         val path = mutableState.value.pendingDownloadPath ?: return
-        runTask("Downloading ${path.substringAfterLast('/')}…") {
-            repository.download(path, uri)
+        val fileName = path.substringAfterLast('/').ifBlank { "file" }
+        runTask("Downloading $fileName…") {
+            mutableState.update {
+                it.copy(transferProgress = TransferProgressState("Downloading $fileName", 0L, null))
+            }
+            var lastUpdate = 0L
+            repository.download(path, uri) { done, total ->
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastUpdate >= 100L || (total != null && done >= total)) {
+                    lastUpdate = now
+                    mutableState.update {
+                        it.copy(transferProgress = TransferProgressState("Downloading $fileName", done, total))
+                    }
+                }
+            }
             mutableState.update {
                 it.copy(
                     pendingDownloadPath = null,
-                    statusMessage = "Saved ${path.substringAfterLast('/')} to your phone."
+                    transferProgress = null,
+                    statusMessage = "Saved $fileName to your phone."
                 )
             }
         }
@@ -232,20 +265,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun cancelCurrentTask() {
+        activeTask?.cancel()
+    }
+
     private fun runTask(label: String, task: suspend () -> Unit) {
         if (mutableState.value.busy) return
-        viewModelScope.launch {
+
+        lateinit var taskJob: Job
+        taskJob = viewModelScope.launch(start = CoroutineStart.LAZY) {
             mutableState.update { it.copy(busy = true, statusMessage = label) }
             try {
                 task()
             } catch (cancelled: CancellationException) {
+                mutableState.update {
+                    it.copy(statusMessage = "Operation cancelled.", transferProgress = null, pendingDownloadPath = null)
+                }
                 throw cancelled
             } catch (error: Exception) {
-                mutableState.update { it.copy(statusMessage = error.message ?: "The operation failed.") }
+                mutableState.update {
+                    it.copy(statusMessage = error.message ?: "The operation failed.", transferProgress = null)
+                }
             } finally {
-                mutableState.update { it.copy(busy = false) }
+                mutableState.update { it.copy(busy = false, transferProgress = null) }
+                if (activeTask === taskJob) activeTask = null
             }
         }
+        activeTask = taskJob
+        taskJob.start()
     }
 
     override fun onCleared() {
