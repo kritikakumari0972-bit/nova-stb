@@ -30,7 +30,7 @@ Community-maintained Jio STB documentation lists JMSB200A as a model with report
 
 ## Build
 
-The project uses Android Gradle Plugin 9.3.0, Kotlin 2.4.21, Gradle 9.6.0, JDK 17, Android SDK 37, Jetpack Compose and adb-kt 1.0.0.
+The project uses Android Gradle Plugin 9.3.0, Kotlin 2.4.21, Gradle 9.6.0, JDK 17, Android SDK 36, Jetpack Compose and adb-kt 1.0.0.
 
 A GitHub Actions workflow installs Gradle and the Android SDK, runs unit tests, assembles a debug APK, runs lint and uploads the APK as a workflow artifact.
 
