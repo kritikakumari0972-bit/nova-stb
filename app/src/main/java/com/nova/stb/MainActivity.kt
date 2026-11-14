@@ -54,7 +54,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.collectAsState
 import com.nova.stb.data.RemoteEntry
 import com.nova.stb.ui.AppTab
 import com.nova.stb.ui.MainUiState
@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun NovaStbScreen(viewModel: MainViewModel) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
+    val state by viewModel.state.collectAsState()
 
     val apkPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.installApk(uri)
