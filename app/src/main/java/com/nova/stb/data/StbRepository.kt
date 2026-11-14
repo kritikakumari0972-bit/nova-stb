@@ -213,7 +213,7 @@ class StbRepository(context: Context) {
     }
 
     private fun shellQuote(value: String): String =
-        "'" + value.replace("'", "'"'"'") + "'"
+        "'" + value.replace("'".toRegex(), """'"'"'""") + "'"
 
     private fun isValidPackageName(value: String): Boolean {
         val segments = value.split('.')
