@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.nova.stb"
-    compileSdk = 37
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.nova.stb"
         minSdk = 26
